@@ -59,9 +59,15 @@ function SignUpForm() {
     }
   };
 
-  const handleOAuthSignIn = (provider: "google" | "github") => {
-    signIn(provider, { callbackUrl: targetRoute });
-  };
+
+  // ✅ NEW VERSION
+const handleOAuthSignIn = (provider: "google" | "github") => {
+  const callbackUrl = accountType === "artisan"
+    ? "/artisan/dashboard?accountType=artisan"
+    : "/client/dashboard?accountType=client";
+
+  signIn(provider, { callbackUrl });
+};
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans text-gray-800">
@@ -108,7 +114,7 @@ function SignUpForm() {
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
-              I am an Artisan
+              I am an Artisanssss
             </Link>
           </div>
 
