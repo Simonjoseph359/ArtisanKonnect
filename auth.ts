@@ -44,8 +44,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const querySnapshot = await getDocs(q);
 
         // Determine intended accountType from OAuth callback URL
-        const isArtisanCallback = account.callbackUrl?.includes("accountType=artisan") || account.callbackUrl?.includes("/artisan/");
-        const selectedType = isArtisanCallback ? "artisan" : "client";
+        // const isArtisanCallback = account.callbackUrl?.includes("accountType=artisan") || account.callbackUrl?.includes("/artisan/");
+        // const selectedType = isArtisanCallback ? "artisan" : "client";
+
+        // ✅ Properly cast as String
+        const callbackUrl = String(account?.callbackUrl || "");
+        const selectedType = callbackUrl.includes("accountType=artisan") || callbackUrl.includes("/artisan/")
+        ? "artisan"
+        : "client";
 
         // Create user in Firestore if new
         if (querySnapshot.empty) {
