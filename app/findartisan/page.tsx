@@ -148,9 +148,12 @@ export default function FindArtisanPage() {
               >
                 <div>
                   <img
-                    src={artisan.image || "https://via.placeholder.com/150"}
+                    src={
+                      artisan.image ||
+                      "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400"
+                    }
                     alt={artisan.name}
-                    className="w-20 h-20 rounded-xl object-cover mb-4"
+                    className="w-20 h-20 rounded-xl object-cover mb-4 border border-gray-100"
                   />
                   <span className="text-xs font-bold uppercase text-emerald-600">
                     {artisan.trade}
@@ -162,6 +165,7 @@ export default function FindArtisanPage() {
                     {artisan.bio}
                   </p>
 
+                  {/* Skills */}
                   {Array.isArray(artisan.skills) && artisan.skills.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-3">
                       {artisan.skills.slice(0, 3).map((skill: string, idx: number) => (
@@ -172,6 +176,25 @@ export default function FindArtisanPage() {
                           {skill}
                         </span>
                       ))}
+                    </div>
+                  )}
+
+                  {/* PORTFOLIO / PAST WORK MINI PREVIEW */}
+                  {Array.isArray(artisan.portfolio) && artisan.portfolio.length > 0 && (
+                    <div className="mt-4 pt-3 border-t border-gray-50">
+                      <p className="text-[10px] font-bold uppercase text-gray-400 mb-2">
+                        Past Work Samples
+                      </p>
+                      <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                        {artisan.portfolio.slice(0, 4).map((workImg: string, pIdx: number) => (
+                          <img
+                            key={pIdx}
+                            src={workImg}
+                            alt={`Work ${pIdx + 1}`}
+                            className="w-12 h-12 rounded-lg object-cover border border-gray-100 flex-shrink-0"
+                          />
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>

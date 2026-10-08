@@ -3,59 +3,37 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { auth, db } from "@/config/firebase";
-import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { useSession } from "next-auth/react";
 import { FaSearch, FaCalendarCheck } from "react-icons/fa";
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const [isAuthorized, setIsAuthorized] = useState(false);
+  const { data: session, status } = useSession();
   const [initial, setInitial] = useState("C");
 
   useEffect(() => {
-    // 1. Listen for active Firebase Auth user state
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        // Not logged in -> redirect to login screen
-        router.push("/auth");
-        return;
+    // 1. If NextAuth confirms user is not logged in, redirect to auth
+    if (status === "unauthenticated") {
+      router.push("/auth");
+      return;
+    }
+
+    // 2. If authenticated, check the accountType you passed through auth.ts
+    if (status === "authenticated" && session?.user) {
+      const accountType = (session.user as any).accountType;
+
+      if (accountType === "artisan") {
+        router.push("/artisan/dashboard");
+      } else {
+        // Authorized client -> set avatar initial
+        const fullName = session.user.name || "Client";
+        setInitial(fullName.charAt(0).toUpperCase());
       }
-
-      try {
-        // 2. Fetch user's role from Firestore 'users' collection
-        const userDocRef = doc(db, "users", user.uid);
-        const userDoc = await getDoc(userDocRef);
-
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-
-          if (userData.accountType === "client") {
-            // Authorized client -> render layout
-            const fullName = userData.fullName || user.displayName || "";
-            setInitial(fullName ? fullName[0].toUpperCase() : "C");
-            setIsAuthorized(true);
-          } else if (userData.accountType === "artisan") {
-            // Signed in as artisan -> send to artisan area
-            router.push("/artisan/jobs");
-          } else {
-            router.push("/auth");
-          }
-        } else {
-          // No Firestore record found for this UID
-          router.push("/auth");
-        }
-      } catch (error) {
-        console.error("Error verifying client role:", error);
-        router.push("/auth");
-      }
-    });
-
-    return () => unsubscribe();
-  }, [router]);
+    }
+  }, [status, session, router]);
 
   // Prevent UI flashing before security check finishes
-  if (!isAuthorized) {
+  if (status === "loading" || status === "unauthenticated" || (session?.user as any)?.accountType !== "client") {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center text-emerald-600 font-medium text-sm">
         Verifying client access...

@@ -10,6 +10,9 @@ export default function ArtisanProfilePage() {
   const { id } = useParams();
   const [artisan, setArtisan] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  
+  // State for image lightbox view
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchArtisan() {
@@ -19,7 +22,8 @@ export default function ArtisanProfilePage() {
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
-          setArtisan({ id: docSnap.id, ...docSnap.data() });
+          const data = docSnap.data();
+          setArtisan({ id: docSnap.id, ...data });
         } else {
           console.error("No such artisan found in database!");
         }
@@ -65,9 +69,10 @@ export default function ArtisanProfilePage() {
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50 pb-16">
+  const hasPortfolio = Array.isArray(artisan.portfolio) && artisan.portfolio.length > 0;
 
+  return (
+    <div className="min-h-screen bg-gray-50 pb-16 relative">
       <main className="max-w-4xl mx-auto px-6 pt-8">
         {/* Back Link */}
         <Link
@@ -119,7 +124,7 @@ export default function ArtisanProfilePage() {
               <div className="mt-6 flex flex-wrap gap-3">
                 <button
                   onClick={() => alert(`Contacting ${artisan.name}...`)}
-                  className="px-6 py-2.5 bg-emerald-600 text-white font-bold text-xs rounded-xl shadow hover:bg-emerald-700 transition"
+                  className="px-6 py-2.5 bg-emerald-600 text-white font-bold text-xs rounded-xl shadow hover:bg-emerald-700 transition cursor-pointer"
                 >
                   Contact Artisan
                 </button>
@@ -159,6 +164,36 @@ export default function ArtisanProfilePage() {
                 </div>
               </div>
             )}
+
+            {/* PORTFOLIO / PAST WORK SHOWCASE GALLERY */}
+            <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-gray-900 mb-3">
+                Portfolio / Past Work Showcase
+              </h2>
+
+              {hasPortfolio ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {artisan.portfolio.map((imgUrl: string, idx: number) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setSelectedImage(imgUrl)}
+                      className="group relative rounded-xl overflow-hidden border border-gray-100 aspect-square block cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <img
+                        src={imgUrl}
+                        alt={`Work sample ${idx + 1}`}
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                      />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 italic">
+                  No past work photos uploaded yet.
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Sidebar Info */}
@@ -192,6 +227,42 @@ export default function ArtisanProfilePage() {
           </div>
         </div>
       </main>
+
+      {/* FULLSCREEN IMAGE LIGHTBOX MODAL */}
+      {selectedImage && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-4"
+          onClick={() => setSelectedImage(null)}
+        >
+          {/* Top Bar with 'Back to Profile' Button */}
+          <div className="w-full max-w-4xl flex items-center justify-between mb-4 px-2">
+            <button
+              onClick={() => setSelectedImage(null)}
+              className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white font-semibold text-xs rounded-xl backdrop-blur transition flex items-center gap-2 cursor-pointer"
+            >
+              ← Back to Profile
+            </button>
+            <button
+              onClick={() => setSelectedImage(null)}
+              className="w-8 h-8 flex items-center justify-center bg-white/10 hover:bg-white/20 text-white rounded-full text-sm font-bold backdrop-blur transition cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Expanded Image View */}
+          <div 
+            className="max-w-4xl max-h-[80vh] overflow-hidden rounded-2xl border border-white/10 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={selectedImage}
+              alt="Expanded work sample"
+              className="w-full h-full object-contain max-h-[80vh]"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
