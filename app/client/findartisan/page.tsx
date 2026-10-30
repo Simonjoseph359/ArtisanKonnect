@@ -4,8 +4,8 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { db } from "@/config/firebase";
-import { collection, getDocs, query, where } from "firebase/firestore";
-import JobRequestModal from "@/components/jobRequestModal";
+import { collection, getDocs } from "firebase/firestore";
+import JobRequestModal from "@/components/jobRequestModal"; // Adjusted import path if needed
 
 const CATEGORIES = [
   "All",
@@ -31,41 +31,15 @@ export default function ClientFindArtisanPage() {
   useEffect(() => {
     async function fetchArtisans() {
       try {
-        // 1. Fetch from 'artisans' collection
+        // Fetch ONLY from the official 'artisans' collection
         const artisansSnap = await getDocs(collection(db, "artisans"));
         const artisansData = artisansSnap.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         }));
 
-        // 2. Fetch registered artisan users from 'users' collection
-        const usersQ = query(collection(db, "users"), where("accountType", "==", "artisan"));
-        const usersSnap = await getDocs(usersQ);
-        const usersData = usersSnap.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            name: data.fullName || data.name || "Artisan",
-            trade: data.trade || data.skill || "General Repair",
-            bio: data.bio || "Experienced local professional ready to help.",
-            location: data.location || "Abuja",
-            rate: data.rate || "Negotiable",
-            skills: data.skills || [data.skill || "General"],
-            image: data.image || "https://images.unsplash.com/photo-1540569014015-19a7be504e3a?auto=format&fit=crop&q=80&w=300",
-            ...data,
-          };
-        });
-
-        // Combine both sources without duplicates
-        const combined = [...artisansData];
-        usersData.forEach((u) => {
-          if (!combined.some((a) => a.id === u.id)) {
-            combined.push(u);
-          }
-        });
-
-        setArtisans(combined);
-        setFilteredArtisans(combined);
+        setArtisans(artisansData);
+        setFilteredArtisans(artisansData);
       } catch (error) {
         console.error("Error fetching artisans:", error);
       } finally {

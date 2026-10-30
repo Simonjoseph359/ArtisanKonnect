@@ -2,12 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
-// import { getArtisanProfile, updateArtisanProfile } from "@/config/jobs";
 import { getArtisanProfile, updateArtisanProfile } from "@/config/job";
 
 export default function ArtisanProfilePage() {
   const { data: session } = useSession();
-  const artisanId = session?.user?.id || "artisan_123";
+  const artisanId = (session?.user as any)?.id || session?.user?.email;
 
   const [formData, setFormData] = useState({
     fullName: "",
@@ -19,16 +18,16 @@ export default function ArtisanProfilePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  // Load profile data from Firebase when the component mounts
   useEffect(() => {
     async function loadProfile() {
+      if (!artisanId) return;
       try {
         const data = await getArtisanProfile(artisanId);
         if (data) {
           setFormData({
-            fullName: data.fullName || "",
-            category: data.category || "",
-            hourlyRate: data.hourlyRate || "",
+            fullName: data.fullName || (data as any).name || "",
+            category: data.category || (data as any).trade || "",
+            hourlyRate: data.hourlyRate || (data as any).rate || "",
           });
         }
       } catch (error) {
@@ -47,6 +46,7 @@ export default function ArtisanProfilePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!artisanId) return;
     setIsSaving(true);
     setMessage(null);
 
@@ -123,7 +123,7 @@ export default function ArtisanProfilePage() {
               Hourly Rate (₦)
             </label>
             <input
-              type="number"
+              type="text"
               name="hourlyRate"
               value={formData.hourlyRate}
               onChange={handleChange}

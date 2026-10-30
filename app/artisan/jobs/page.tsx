@@ -2,17 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { getArtisanJobRequests, updateJobStatus, JobRequest, } from "@/config/job";
+import { getArtisanJobRequests, updateJobStatus, JobRequest } from "@/config/job";
 
 export default function ArtisanJobsPage() {
   const { data: session } = useSession();
   const [jobs, setJobs] = useState<JobRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Uses active session ID or defaults to "artisan_123" for testing
-  const artisanId = session?.user?.id || "artisan_123";
+  // Dynamic session identifier
+  const artisanId = (session?.user as any)?.id || session?.user?.email;
 
   const loadJobs = async () => {
+    if (!artisanId) return;
     setLoading(true);
     try {
       const data = await getArtisanJobRequests(artisanId);
@@ -36,7 +37,6 @@ export default function ArtisanJobsPage() {
   ) => {
     try {
       await updateJobStatus(jobId, newStatus);
-      // Update local state instantly
       setJobs((prev) =>
         prev.map((job) =>
           job.id === jobId ? { ...job, status: newStatus } : job

@@ -5,9 +5,14 @@ import Link from "next/link";
 import { Theme } from "@/components/Themes";
 import { FcGoogle } from "react-icons/fc";
 import { FaGithub } from "react-icons/fa";
-import { signIn } from "next-auth/react";
-import { db } from "@/config/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { auth, db } from "@/config/firebase";
+import { 
+  signInWithEmailAndPassword, 
+  GoogleAuthProvider, 
+  GithubAuthProvider, 
+  signInWithPopup 
+} from "firebase/auth";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
 export default function SignIn() {
   const [email, setEmail] = useState("");
@@ -20,43 +25,66 @@ export default function SignIn() {
     setLoading(true);
     setError("");
 
+    const formattedEmail = email.trim().toLowerCase();
+
     try {
-      // 1. Fetch user accountType directly from Firestore
-      const usersRef = collection(db, "users");
-      const q = query(usersRef, where("email", "==", email.trim().toLowerCase()));
-      const querySnapshot = await getDocs(q);
+      // 1. Authenticate credentials securely via Firebase Auth
+      const userCredential = await signInWithEmailAndPassword(auth, formattedEmail, password);
+      const user = userCredential.user;
 
-      if (querySnapshot.empty) {
-        setError("No account found with this email.");
-        setLoading(false);
-        return;
+      // 2. Fetch user profile from Firestore using their unique UID
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
+
+      let accountType = "client";
+      if (userSnap.exists()) {
+        accountType = userSnap.data().accountType || "client";
       }
 
-      const userData = querySnapshot.docs[0].data();
-      const accountType = userData.accountType;
-
-      // 2. Authenticate user credentials via NextAuth
-      const res = await signIn("credentials", {
-        email,
-        password,
-        redirect: false,
-      });
-
-      if (res?.ok) {
-        // 3. Route dynamically based on user role in Firestore
-        if (accountType === "artisan") {
-          window.location.href = "/artisan/dashboard";
-        } else {
-          window.location.href = "/client/dashboard";
-        }
+      // 3. Route dynamically based on user role
+      if (accountType === "artisan") {
+        window.location.href = "/artisan/dashboard";
       } else {
-        setError("Invalid email or password. Please try again.");
-        setLoading(false);
+        window.location.href = "/client/dashboard";
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Sign-in error:", err);
-      setError("An unexpected error occurred. Please try again.");
+      // Display error message and clear password input field so they can try again
+      setError("Invalid email or password. Please try again.");
+      setPassword("");
       setLoading(false);
+    }
+  };
+
+  const handleOAuthSignIn = async (providerType: "google" | "github") => {
+    setError("");
+    const provider = providerType === "google" ? new GoogleAuthProvider() : new GithubAuthProvider();
+
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
+
+      let accountType = "client";
+      if (userSnap.exists()) {
+        accountType = userSnap.data().accountType || "client";
+      } else {
+        await setDoc(userRef, {
+          uid: user.uid,
+          fullName: user.displayName || "User",
+          email: user.email?.toLowerCase() || "",
+          accountType: "client",
+          image: user.photoURL || "",
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      window.location.href = accountType === "artisan" ? "/artisan/dashboard" : "/client/dashboard";
+    } catch (err: any) {
+      console.error("OAuth error:", err);
+      setError("Social login failed. Please try again.");
     }
   };
 
@@ -95,8 +123,8 @@ export default function SignIn() {
           <div className="space-y-3">
             <button
               type="button"
-              onClick={() => signIn("google", { callbackUrl: "/client/dashboard" })}
-              className="w-full flex items-center justify-center gap-3 py-3 px-4 border border-gray-300 rounded-xl shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              onClick={() => handleOAuthSignIn("google")}
+              className="w-full flex items-center justify-center gap-3 py-3 px-4 border border-gray-300 rounded-xl shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
             >
               <FcGoogle className="text-xl" />
               Log in with Google
@@ -104,8 +132,8 @@ export default function SignIn() {
 
             <button
               type="button"
-              onClick={() => signIn("github", { callbackUrl: "/client/dashboard" })}
-              className="w-full flex items-center justify-center gap-3 py-3 px-4 border border-gray-300 rounded-xl shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              onClick={() => handleOAuthSignIn("github")}
+              className="w-full flex items-center justify-center gap-3 py-3 px-4 border border-gray-300 rounded-xl shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
             >
               <FaGithub className="text-xl text-gray-900" />
               Log in with GitHub

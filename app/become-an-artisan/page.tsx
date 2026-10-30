@@ -4,19 +4,20 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { db } from "@/config/firebase";
-import { collection, addDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, setDoc } from "firebase/firestore";
 
 export default function BecomeArtisanPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
   const [loading, setLoading] = useState(false);
+  const [checkingProfile, setCheckingProfile] = useState(true);
   const [uploadingProfile, setUploadingProfile] = useState(false);
   const [uploadingPortfolio, setUploadingPortfolio] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
     trade: "Electrical",
-    customTrade: "", // State for custom trade input when "Others" is selected
+    customTrade: "", 
     title: "",
     location: "",
     rate: "",
@@ -26,23 +27,51 @@ export default function BecomeArtisanPage() {
     portfolio: [] as string[],
   });
 
-  // Restore saved form draft or pre-fill user's name if logged in
+  // 1. Check if user already has an artisan profile on page load
   useEffect(() => {
-    const savedDraft = localStorage.getItem("artisanDraft");
-    if (savedDraft) {
-      try {
-        const parsed = JSON.parse(savedDraft);
-        setFormData(parsed);
-      } catch (e) {
-        console.error("Error loading draft:", e);
+    async function checkExistingArtisan() {
+      if (status === "loading") return;
+
+      if (!session?.user?.email) {
+        setCheckingProfile(false);
+        return;
       }
-    } else if (session?.user?.name) {
-      setFormData((prev) => ({
-        ...prev,
-        name: prev.name || session.user?.name || "",
-      }));
+
+      try {
+        const userEmail = session.user.email.toLowerCase().trim();
+        const q = query(collection(db, "artisans"), where("userId", "==", userEmail));
+        const snap = await getDocs(q);
+
+        if (!snap.empty) {
+          // Profile already exists! Redirect to artisan dashboard immediately
+          router.replace("/artisan/dashboard");
+          return;
+        }
+      } catch (err) {
+        console.error("Error checking existing artisan profile:", err);
+      }
+
+      // If no profile exists, load draft or pre-fill user name
+      const savedDraft = localStorage.getItem("artisanDraft");
+      if (savedDraft) {
+        try {
+          const parsed = JSON.parse(savedDraft);
+          setFormData(parsed);
+        } catch (e) {
+          console.error("Error loading draft:", e);
+        }
+      } else if (session?.user?.name) {
+        setFormData((prev) => ({
+          ...prev,
+          name: prev.name || session.user?.name || "",
+        }));
+      }
+
+      setCheckingProfile(false);
     }
-  }, [session]);
+
+    checkExistingArtisan();
+  }, [session, status, router]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -50,7 +79,7 @@ export default function BecomeArtisanPage() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // Helper for uploading single/multiple files to Cloudinary
+  // Helper for uploading files to Cloudinary
   const uploadToCloudinary = async (file: File) => {
     const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || "dzshagot";
     const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET || "artisankonnect_preset";
@@ -92,7 +121,7 @@ export default function BecomeArtisanPage() {
     }
   };
 
-  // Portfolio Images Upload Handler (Supports multiple files at once)
+  // Portfolio Images Upload Handler
   const handlePortfolioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -115,7 +144,6 @@ export default function BecomeArtisanPage() {
     }
   };
 
-  // Remove single portfolio image from draft
   const handleRemovePortfolioImage = (indexToRemove: number) => {
     setFormData((prev) => ({
       ...prev,
@@ -135,19 +163,29 @@ export default function BecomeArtisanPage() {
     setLoading(true);
 
     try {
+      const userEmail = session?.user?.email?.toLowerCase().trim() || "";
+
+      // 1. Double-check existence right before writing to prevent duplicate profiles
+      const q = query(collection(db, "artisans"), where("userId", "==", userEmail));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        alert("You already have an active artisan profile!");
+        router.replace("/artisan/dashboard");
+        return;
+      }
+
       const skillsArray = formData.skills
         .split(",")
         .map((skill) => skill.trim())
         .filter((skill) => skill.length > 0);
 
-      // Resolve final trade: use customTrade if "Others" selected, else selected trade
       const finalTrade =
         formData.trade === "Others"
           ? formData.customTrade.trim() || "General Artisan"
           : formData.trade;
 
       const newArtisan = {
-        userId: session?.user?.email || "",
+        userId: userEmail,
         name: formData.name || session?.user?.name || "Anonymous Artisan",
         trade: finalTrade,
         title: formData.title || `${finalTrade} Professional`,
@@ -168,9 +206,12 @@ export default function BecomeArtisanPage() {
         createdAt: new Date().toISOString(),
       };
 
-      const docRef = await addDoc(collection(db, "artisans"), newArtisan);
+      // 2. Explicitly store document ID as the user's ID/email to match Dashboard listener
+      const targetDocId = (session?.user as any)?.id || userEmail;
+      await setDoc(doc(db, "artisans", targetDocId), newArtisan);
+
       localStorage.removeItem("artisanDraft");
-      router.push(`/findartisan/${docRef.id}`);
+      router.push("/artisan/dashboard");
     } catch (error) {
       console.error("Error creating artisan profile:", error);
       alert("Failed to create profile. Check console for details.");
@@ -178,6 +219,17 @@ export default function BecomeArtisanPage() {
       setLoading(false);
     }
   };
+
+  if (checkingProfile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-xs text-gray-500 font-medium">Checking profile status...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -205,7 +257,6 @@ export default function BecomeArtisanPage() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* TRADE DROPDOWN WITH CUSTOM 'OTHERS' OPTION */}
               <div>
                 <label className="block text-xs font-bold uppercase text-gray-700 mb-2">
                   Trade / Category
@@ -225,7 +276,6 @@ export default function BecomeArtisanPage() {
                   <option value="Others">Others</option>
                 </select>
 
-                {/* CONDITIONAL INPUT FOR 'OTHERS' */}
                 {formData.trade === "Others" && (
                   <input
                     type="text"
@@ -234,7 +284,7 @@ export default function BecomeArtisanPage() {
                     value={formData.customTrade}
                     onChange={handleChange}
                     placeholder="Specify your trade (e.g. Tiler, Mason)"
-                    className="w-full px-4 py-3 mt-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm animate-fadeIn"
+                    className="w-full px-4 py-3 mt-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
                   />
                 )}
               </div>
@@ -315,7 +365,6 @@ export default function BecomeArtisanPage() {
               />
             </div>
 
-            {/* PROFILE PHOTO UPLOAD */}
             <div>
               <label className="block text-xs font-bold uppercase text-gray-700 mb-2">
                 Profile Photo
@@ -347,13 +396,12 @@ export default function BecomeArtisanPage() {
               </div>
             </div>
 
-            {/* PORTFOLIO / PAST WORK SHOWCASE UPLOAD */}
             <div className="pt-2">
               <label className="block text-xs font-bold uppercase text-gray-700 mb-1">
                 Portfolio / Past Work Showcase
               </label>
               <p className="text-xs text-gray-500 mb-3">
-                Upload photos of completed jobs or previous work to showcase your craftsmanship to potential clients.
+                Upload photos of completed jobs or previous work to showcase your craftsmanship.
               </p>
 
               <div className="space-y-3">

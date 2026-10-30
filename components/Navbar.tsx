@@ -1,4 +1,3 @@
-
 "use client"
 import Link from "next/link"
 import Image from "next/image"
@@ -15,6 +14,13 @@ export default function Navbar() {
     // Get live session and auth status from NextAuth
     const { data: session, status } = useSession();
     const isLoggedIn = status === "authenticated";
+
+    console.log(session);
+    
+
+    // Dynamic dashboard link based on user accountType
+    const userRole = (session?.user as any)?.accountType || "client";
+    const dashboardUrl = userRole === "artisan" ? "/artisan/dashboard" : "/client/dashboard";
 
     // Helper function to extract user initials if no profile picture exists
     const getInitials = (name?: string | null) => {
@@ -61,7 +67,7 @@ export default function Navbar() {
                     <div className="relative">
                         <button
                             onClick={() => setDropdownOpen(!dropdownOpen)}
-                            className="flex items-center justify-center w-10 h-10 rounded-full border border-gray-300 overflow-hidden hover:opacity-90 transition-opacity focus:outline-none shadow-sm"
+                            className="flex items-center justify-center w-10 h-10 rounded-full border border-gray-300 overflow-hidden hover:opacity-90 transition-opacity focus:outline-none shadow-sm cursor-pointer"
                         >
                             {/* Display Profile Image if available; otherwise display Orange Initial Badge */}
                             {session?.user?.image ? (
@@ -89,6 +95,16 @@ export default function Navbar() {
                                     <p className="text-sm font-bold text-gray-800">{session?.user?.name || "User"}</p>
                                     <p className="text-xs text-gray-500 truncate">{session?.user?.email}</p>
                                 </div>
+
+                                {/* NEW: Dashboard Link */}
+                                <Link
+                                    href={dashboardUrl}
+                                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 font-medium"
+                                    onClick={() => setDropdownOpen(false)}
+                                >
+                                    Dashboard
+                                </Link>
+
                                 <Link
                                     href="/profile"
                                     className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 font-medium"
@@ -96,12 +112,13 @@ export default function Navbar() {
                                 >
                                     View Profile
                                 </Link>
+
                                 <button
                                     onClick={() => {
                                         setDropdownOpen(false);
                                         signOut({ callbackUrl: "/" });
                                     }}
-                                    className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-50 font-bold border-t border-gray-100"
+                                    className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-50 font-bold border-t border-gray-100 cursor-pointer"
                                 >
                                     Log Out
                                 </button>
@@ -144,13 +161,22 @@ export default function Navbar() {
                                 )}
                             </div>
                             <p className="font-medium text-gray-800">{session?.user?.name}</p>
-                            <Link href="/profile" onClick={() => setNavOpen(false)} className="text-base text-gray-700">View Profile</Link>
+
+                            {/* NEW: Mobile Dashboard Link */}
+                            <Link href={dashboardUrl} onClick={() => setNavOpen(false)} className="text-base font-bold text-emerald-600">
+                                Dashboard
+                            </Link>
+
+                            <Link href="/profile" onClick={() => setNavOpen(false)} className="text-base text-gray-700">
+                                View Profile
+                            </Link>
+
                             <button 
                                 onClick={() => {
                                     setNavOpen(false);
                                     signOut({ callbackUrl: "/" });
                                 }} 
-                                className="text-base text-red-600 font-medium"
+                                className="text-base text-red-600 font-medium cursor-pointer"
                             >
                                 Log Out
                             </button>

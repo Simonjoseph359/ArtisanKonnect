@@ -1,4 +1,4 @@
-import { db } from "./firebase";
+import { db } from "@/config/firebase";
 import {
   collection,
   addDoc,
@@ -10,7 +10,6 @@ import {
   getDoc,
   setDoc,
   serverTimestamp,
-  orderBy,
 } from "firebase/firestore";
 
 // --- JOB REQUEST TYPES & HELPERS ---
@@ -30,7 +29,9 @@ export interface JobRequest {
 }
 
 // 1. Create a new job request
-export async function createJobRequest(jobData: Omit<JobRequest, "id" | "status" | "createdAt">) {
+export async function createJobRequest(
+  jobData: Omit<JobRequest, "id" | "status" | "createdAt">
+) {
   const docRef = await addDoc(collection(db, "jobRequests"), {
     ...jobData,
     status: "pending",
@@ -41,34 +42,54 @@ export async function createJobRequest(jobData: Omit<JobRequest, "id" | "status"
 
 // 2. Get incoming job requests for a specific artisan
 export async function getArtisanJobRequests(artisanId: string): Promise<JobRequest[]> {
+  if (!artisanId) return [];
+
   const q = query(
     collection(db, "jobRequests"),
-    where("artisanId", "==", artisanId),
-    orderBy("createdAt", "desc")
+    where("artisanId", "==", artisanId)
   );
+  
   const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as JobRequest[];
+  const jobs = querySnapshot.docs.map((docSnap) => ({
+    id: docSnap.id,
+    ...(docSnap.data() as Omit<JobRequest, "id">),
+  }));
+
+  // Sort by date in memory (newest first) to avoid missing index errors
+  return jobs.sort((a, b) => {
+    const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+    const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+    return timeB - timeA;
+  });
 }
 
 // 3. Get active bookings for a specific client
 export async function getClientBookings(clientId: string): Promise<JobRequest[]> {
+  if (!clientId) return [];
+
   const q = query(
     collection(db, "jobRequests"),
-    where("clientId", "==", clientId),
-    orderBy("createdAt", "desc")
+    where("clientId", "==", clientId)
   );
+
   const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as JobRequest[];
+  const bookings = querySnapshot.docs.map((docSnap) => ({
+    id: docSnap.id,
+    ...(docSnap.data() as Omit<JobRequest, "id">),
+  }));
+
+  return bookings.sort((a, b) => {
+    const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+    const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+    return timeB - timeA;
+  });
 }
 
 // 4. Update job request status
-export async function updateJobStatus(jobId: string, status: "accepted" | "declined" | "completed") {
+export async function updateJobStatus(
+  jobId: string, 
+  status: "accepted" | "declined" | "completed"
+) {
   const jobRef = doc(db, "jobRequests", jobId);
   await updateDoc(jobRef, { status });
 }
@@ -77,23 +98,38 @@ export async function updateJobStatus(jobId: string, status: "accepted" | "decli
 
 export interface ArtisanProfile {
   uid: string;
-  fullName: string;
-  category: string;
-  hourlyRate: string;
+  fullName?: string;
+  name?: string;
+  category?: string;
+  trade?: string;
+  hourlyRate?: string;
+  rate?: string;
+  location?: string;
+  bio?: string;
+  image?: string;
+  verified?: boolean;
+  completedJobs?: number;
+  rating?: number;
+  reviewsCount?: number;
 }
 
 // 5. Fetch Artisan Profile by ID
 export async function getArtisanProfile(artisanId: string): Promise<ArtisanProfile | null> {
+  if (!artisanId) return null;
   const docRef = doc(db, "artisans", artisanId);
   const docSnap = await getDoc(docRef);
   if (docSnap.exists()) {
-    return docSnap.data() as ArtisanProfile;
+    return { uid: docSnap.id, ...docSnap.data() } as ArtisanProfile;
   }
   return null;
 }
 
 // 6. Create or Update Artisan Profile
-export async function updateArtisanProfile(artisanId: string, profileData: Partial<ArtisanProfile>) {
+export async function updateArtisanProfile(
+  artisanId: string, 
+  profileData: Partial<ArtisanProfile>
+) {
+  if (!artisanId) return;
   const docRef = doc(db, "artisans", artisanId);
   await setDoc(docRef, profileData, { merge: true });
 }

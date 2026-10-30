@@ -5,9 +5,15 @@ import Link from "next/link";
 import { Theme } from "@/components/Themes";
 import { FcGoogle } from "react-icons/fc";
 import { FaGithub } from "react-icons/fa";
-import { signIn } from "next-auth/react";
-import { db } from "@/config/firebase";
-import { collection, addDoc } from "firebase/firestore";
+import { auth, db } from "@/config/firebase";
+import { 
+  createUserWithEmailAndPassword, 
+  GoogleAuthProvider, 
+  GithubAuthProvider, 
+  signInWithPopup,
+  updateProfile 
+} from "firebase/auth";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 import { useSearchParams } from "next/navigation";
 
 function SignUpForm() {
@@ -19,19 +25,27 @@ function SignUpForm() {
   const [password, setPassword] = useState("");
   const [skill, setSkill] = useState("Electrician");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  // Dynamic destination route based on current account type selection
   const targetRoute = accountType === "artisan" ? "/artisan/dashboard" : "/client/dashboard";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError("");
 
     const formattedEmail = email.trim().toLowerCase();
 
     try {
-      // 1. Save user to Firestore database (with normalized email)
-      await addDoc(collection(db, "users"), {
+      // 1. Create user securely in Firebase Auth (No password stored in Firestore!)
+      const userCredential = await createUserWithEmailAndPassword(auth, formattedEmail, password);
+      const user = userCredential.user;
+
+      await updateProfile(user, { displayName: fullName });
+
+      // 2. Save user public metadata in Firestore using their secure UID as document ID
+      await setDoc(doc(db, "users", user.uid), {
+        uid: user.uid,
         fullName,
         email: formattedEmail,
         accountType,
@@ -39,35 +53,55 @@ function SignUpForm() {
         createdAt: new Date().toISOString(),
       });
 
-      // 2. Log user into NextAuth credentials session
-      const res = await signIn("credentials", {
-        email: formattedEmail,
-        password,
-        name: fullName,
-        redirect: false,
-      });
-
-      if (res?.ok) {
-        window.location.href = targetRoute;
+      // 3. Redirect to dashboard
+      window.location.href = targetRoute;
+    } catch (err: any) {
+      console.error("Signup error:", err);
+      if (err.code === "auth/email-already-in-use") {
+        setError("An account with this email already exists. Please log in instead.");
+      } else if (err.code === "auth/weak-password") {
+        setError("Password should be at least 6 characters long.");
       } else {
-        alert("Registration failed. Please try again.");
-        setLoading(false);
+        setError(err.message || "Registration failed. Please try again.");
       }
-    } catch (error) {
-      console.error("Signup error:", error);
       setLoading(false);
     }
   };
 
+  const handleOAuthSignIn = async (providerType: "google" | "github") => {
+    setLoading(true);
+    setError("");
+    const provider = providerType === "google" ? new GoogleAuthProvider() : new GithubAuthProvider();
 
-  // ✅ NEW VERSION
-const handleOAuthSignIn = (provider: "google" | "github") => {
-  const callbackUrl = accountType === "artisan"
-    ? "/artisan/dashboard?accountType=artisan"
-    : "/client/dashboard?accountType=client";
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
 
-  signIn(provider, { callbackUrl });
-};
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
+
+      let assignedType = accountType;
+
+      if (userSnap.exists()) {
+        assignedType = userSnap.data().accountType || "client";
+      } else {
+        await setDoc(userRef, {
+          uid: user.uid,
+          fullName: user.displayName || "User",
+          email: user.email?.toLowerCase() || "",
+          accountType: assignedType,
+          image: user.photoURL || "",
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      window.location.href = assignedType === "artisan" ? "/artisan/dashboard" : "/client/dashboard";
+    } catch (err: any) {
+      console.error("OAuth error:", err);
+      setError("Social authentication failed. Please try again.");
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans text-gray-800">
@@ -94,6 +128,12 @@ const handleOAuthSignIn = (provider: "google" | "github") => {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow-xl border border-gray-100 sm:rounded-2xl sm:px-10">
+          {error && (
+            <div className="mb-4 p-3 text-sm text-red-600 bg-red-50 rounded-xl border border-red-100 font-medium">
+              {error}
+            </div>
+          )}
+
           {/* Account Type Toggle */}
           <div className="flex p-1 bg-gray-100 rounded-xl mb-6">
             <Link
@@ -114,13 +154,14 @@ const handleOAuthSignIn = (provider: "google" | "github") => {
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
-              I am an Artisanssss
+              I am an Artisan
             </Link>
           </div>
 
           {/* OAuth Buttons */}
           <div className="space-y-3">
             <button
+              type="button"
               onClick={() => handleOAuthSignIn("google")}
               className="w-full flex items-center justify-center gap-3 py-3 px-4 border border-gray-300 rounded-xl shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
             >
@@ -129,6 +170,7 @@ const handleOAuthSignIn = (provider: "google" | "github") => {
             </button>
 
             <button
+              type="button"
               onClick={() => handleOAuthSignIn("github")}
               className="w-full flex items-center justify-center gap-3 py-3 px-4 border border-gray-300 rounded-xl shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
             >
@@ -162,15 +204,10 @@ const handleOAuthSignIn = (provider: "google" | "github") => {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 className="appearance-none block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-1 sm:text-sm text-gray-900"
-                placeholder={
-                  accountType === "artisan"
-                    ? "e.g. John Doe (or Business Name)"
-                    : "John Doe"
-                }
+                placeholder={accountType === "artisan" ? "e.g. John Doe (or Business Name)" : "John Doe"}
               />
             </div>
 
-            {/* Artisan Skill Dropdown */}
             {accountType === "artisan" && (
               <div>
                 <label htmlFor="skill" className="block text-sm font-medium text-gray-700 mb-1">
@@ -217,28 +254,8 @@ const handleOAuthSignIn = (provider: "google" | "github") => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="appearance-none block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-1 sm:text-sm text-gray-900"
-                placeholder="Create a strong password"
+                placeholder="At least 6 characters"
               />
-            </div>
-
-            <div className="flex items-center">
-              <input
-                id="terms"
-                type="checkbox"
-                required
-                className="h-4 w-4 rounded border-gray-300"
-                style={{ accentColor: Theme.primaryColor }}
-              />
-              <label htmlFor="terms" className="ml-2 block text-sm text-gray-900">
-                I agree to the{" "}
-                <Link href="#" style={{ color: Theme.primaryColor }} className="font-medium hover:underline">
-                  Terms of Service
-                </Link>{" "}
-                and{" "}
-                <Link href="#" style={{ color: Theme.primaryColor }} className="font-medium hover:underline">
-                  Privacy Policy
-                </Link>
-              </label>
             </div>
 
             <div>

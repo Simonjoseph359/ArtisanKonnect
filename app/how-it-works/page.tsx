@@ -129,7 +129,7 @@ export default function HowItWorks() {
           {/* Visual/Image Side */}
           <div className="relative rounded-3xl overflow-hidden shadow-2xl h-[600px]">
             <img 
-              src="https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&q=80&w=800" 
+              src="/FRIDO.jpeg" 
               alt="Artisan working" 
               className="w-full h-full object-cover"
             />
