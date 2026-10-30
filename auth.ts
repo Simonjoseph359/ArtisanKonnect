@@ -4,12 +4,54 @@ import Google from "next-auth/providers/google";
 import GitHub from "next-auth/providers/github";
 import Credentials from "next-auth/providers/credentials";
 import { cookies, headers } from "next/headers";
-import { db } from "@/config/firebase";
+import { db, firebaseConfig } from "@/config/firebase";
 import { collection, query, where, getDocs, addDoc } from "firebase/firestore";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
   providers: [
+    // Bridges a Firebase Auth login (see /auth and /signin) into a NextAuth session
+    Credentials({
+      id: "firebase",
+      name: "Firebase",
+      credentials: {
+        idToken: { label: "ID Token", type: "text" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.idToken) return null;
+
+        try {
+          // Firebase rejects expired, forged, or other-project tokens here
+          const res = await fetch(
+            `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${firebaseConfig.apiKey}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ idToken: credentials.idToken }),
+            }
+          );
+
+          if (!res.ok) {
+            console.error("Firebase token rejected:", await res.text());
+            return null;
+          }
+
+          const data = await res.json();
+          const firebaseUser = data.users?.[0];
+          if (!firebaseUser?.email) return null;
+
+          return {
+            id: firebaseUser.localId,
+            email: firebaseUser.email.toLowerCase().trim(),
+            name: firebaseUser.displayName || "User",
+            image: firebaseUser.photoUrl,
+          };
+        } catch (error) {
+          console.error("Firebase authorize error:", error);
+          return null;
+        }
+      },
+    }),
     Google({
       clientId: process.env.AUTH_GOOGLE_ID,
       clientSecret: process.env.AUTH_GOOGLE_SECRET,
@@ -105,6 +147,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
 
     async jwt({ token, user }) {
+      // Runs on every session read, so only hit Firestore at sign-in
+      if (!user && token.accountType) return token;
+
       const email = token.email || user?.email;
       if (email) {
         const normalizedEmail = email.toLowerCase().trim();

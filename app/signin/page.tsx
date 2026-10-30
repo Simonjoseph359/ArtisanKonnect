@@ -6,15 +6,18 @@ import { Theme } from "@/components/Themes";
 import { FcGoogle } from "react-icons/fc";
 import { FaGithub } from "react-icons/fa";
 import { auth, db } from "@/config/firebase";
-import { 
-  signInWithEmailAndPassword, 
+import { createAppSession, getOAuthErrorMessage } from "@/config/session";
+import {
+  signInWithEmailAndPassword,
   GoogleAuthProvider, 
   GithubAuthProvider, 
   signInWithPopup 
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
+import { useRouter } from "next/navigation";
 
 export default function SignIn() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -41,22 +44,26 @@ export default function SignIn() {
         accountType = userSnap.data().accountType || "client";
       }
 
-      // 3. Route dynamically based on user role
+      // 3. Start the app session
+      await createAppSession(user);
+
+      // 4. Route dynamically based on user role
       if (accountType === "artisan") {
-        window.location.href = "/artisan/dashboard";
+        router.replace("/artisan/dashboard");
       } else {
-        window.location.href = "/client/dashboard";
+        router.replace("/client/dashboard");
       }
     } catch (err: any) {
       console.error("Sign-in error:", err);
       // Display error message and clear password input field so they can try again
-      setError("Invalid email or password. Please try again.");
+      setError(err.code ? "Invalid email or password. Please try again." : err.message);
       setPassword("");
       setLoading(false);
     }
   };
 
   const handleOAuthSignIn = async (providerType: "google" | "github") => {
+    setLoading(true);
     setError("");
     const provider = providerType === "google" ? new GoogleAuthProvider() : new GithubAuthProvider();
 
@@ -81,10 +88,12 @@ export default function SignIn() {
         });
       }
 
-      window.location.href = accountType === "artisan" ? "/artisan/dashboard" : "/client/dashboard";
+      await createAppSession(user);
+      router.replace(accountType === "artisan" ? "/artisan/dashboard" : "/client/dashboard");
     } catch (err: any) {
       console.error("OAuth error:", err);
-      setError("Social login failed. Please try again.");
+      setError(getOAuthErrorMessage(err));
+      setLoading(false);
     }
   };
 

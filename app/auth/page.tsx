@@ -6,17 +6,19 @@ import { Theme } from "@/components/Themes";
 import { FcGoogle } from "react-icons/fc";
 import { FaGithub } from "react-icons/fa";
 import { auth, db } from "@/config/firebase";
-import { 
-  createUserWithEmailAndPassword, 
+import { createAppSession, getOAuthErrorMessage } from "@/config/session";
+import {
+  createUserWithEmailAndPassword,
   GoogleAuthProvider, 
   GithubAuthProvider, 
   signInWithPopup,
   updateProfile 
 } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 function SignUpForm() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const accountType = searchParams.get("type") === "artisan" ? "artisan" : "client";
 
@@ -53,8 +55,9 @@ function SignUpForm() {
         createdAt: new Date().toISOString(),
       });
 
-      // 3. Redirect to dashboard
-      window.location.href = targetRoute;
+      // 3. Start the app session, then redirect to dashboard
+      await createAppSession(user);
+      router.replace(targetRoute);
     } catch (err: any) {
       console.error("Signup error:", err);
       if (err.code === "auth/email-already-in-use") {
@@ -95,10 +98,11 @@ function SignUpForm() {
         });
       }
 
-      window.location.href = assignedType === "artisan" ? "/artisan/dashboard" : "/client/dashboard";
+      await createAppSession(user);
+      router.replace(assignedType === "artisan" ? "/artisan/dashboard" : "/client/dashboard");
     } catch (err: any) {
       console.error("OAuth error:", err);
-      setError("Social authentication failed. Please try again.");
+      setError(getOAuthErrorMessage(err));
       setLoading(false);
     }
   };
